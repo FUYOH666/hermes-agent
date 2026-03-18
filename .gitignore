@@ -53,3 +53,9 @@ environments/benchmarks/evals/
 
 # Release script temp files
 .release_notes.md
+
+# Project-specific reports (may contain internal IPs)
+GITHUB_POPULAR_REPOS_REPORT.md
+TOOL_CHECK_REPORT.md
+POLYMARKET_ANALYSIS.md
+TRENDSHIFT_IO_ANALYSIS.md

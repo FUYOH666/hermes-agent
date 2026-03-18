@@ -67,6 +67,9 @@ DEFAULT_CONTEXT_LENGTHS = {
     "meta-llama/llama-3.3-70b-instruct": 131072,
     "deepseek/deepseek-chat-v3": 65536,
     "qwen/qwen-2.5-72b-instruct": 32768,
+    "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf": 262144,
+    "Qwen3.5-35B": 160000,
+    "Qwen3.5": 262144,  # Fuzzy match for Qwen3.5 variants (256k context)
     "glm-4.7": 202752,
     "glm-5": 202752,
     "glm-4.5": 131072,
