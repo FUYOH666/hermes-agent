@@ -703,6 +703,11 @@ def get_prompt_toolkit_style_overrides() -> Dict[str, str]:
         "completion-menu.completion.current": f"bg:#333355 {title}",
         "completion-menu.meta.completion": f"bg:#1a1a2e {dim}",
         "completion-menu.meta.completion.current": f"bg:#333355 {label}",
+        # Fuzzy match: keep non-matching parts bright (default dims them)
+        "completion-menu.completion fuzzymatch.outside": f"bg:#1a1a2e {text}",
+        "completion-menu.completion fuzzymatch.inside": f"bg:#1a1a2e {text} bold",
+        "completion-menu.completion.current fuzzymatch.outside": f"bg:#333355 {title}",
+        "completion-menu.completion.current fuzzymatch.inside": f"bg:#333355 {title} bold",
         "clarify-border": input_rule,
         "clarify-title": f"{title} bold",
         "clarify-question": f"{text} bold",

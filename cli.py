@@ -6631,6 +6631,11 @@ class HermesCLI:
             'completion-menu.completion.current': 'bg:#333355 #FFD700',
             'completion-menu.meta.completion': 'bg:#1a1a2e #888888',
             'completion-menu.meta.completion.current': 'bg:#333355 #FFBF00',
+            # Fuzzy match: keep non-matching parts bright (default dims them to #444)
+            'completion-menu.completion fuzzymatch.outside': 'bg:#1a1a2e #FFF8DC',
+            'completion-menu.completion fuzzymatch.inside': 'bg:#1a1a2e #FFF8DC bold',
+            'completion-menu.completion.current fuzzymatch.outside': 'bg:#333355 #FFD700',
+            'completion-menu.completion.current fuzzymatch.inside': 'bg:#333355 #FFD700 bold',
             # Clarify question panel
             'clarify-border': '#CD7F32',
             'clarify-title': '#FFD700 bold',
