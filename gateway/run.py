@@ -1723,6 +1723,7 @@ class GatewayRunner:
             from agent.model_metadata import (
                 estimate_messages_tokens_rough,
                 get_model_context_length,
+                resolve_config_context_length,
             )
 
             # Read model + compression config from config.yaml.
@@ -1736,6 +1737,7 @@ class GatewayRunner:
             _hyg_model = "anthropic/claude-sonnet-4.6"
             _hyg_threshold_pct = 0.85
             _hyg_compression_enabled = True
+            _hyg_data: Dict[str, Any] = {}
             try:
                 _hyg_cfg_path = _hermes_home / "config.yaml"
                 if _hyg_cfg_path.exists():
@@ -1762,7 +1764,17 @@ class GatewayRunner:
                 pass
 
             if _hyg_compression_enabled:
-                _hyg_context_length = get_model_context_length(_hyg_model)
+                _hyg_mcfg = _hyg_data.get("model", {})
+                _hyg_base = ""
+                if isinstance(_hyg_mcfg, dict):
+                    _hyg_base = str(_hyg_mcfg.get("base_url") or "").strip()
+                _hyg_ctx_ov = resolve_config_context_length(
+                    _hyg_data, _hyg_model, _hyg_base)
+                _hyg_context_length = get_model_context_length(
+                    _hyg_model,
+                    base_url=_hyg_base,
+                    config_context_length=_hyg_ctx_ov,
+                )
                 _compress_token_threshold = int(
                     _hyg_context_length * _hyg_threshold_pct
                 )
@@ -2096,10 +2108,20 @@ class GatewayRunner:
             if "@" in message_text:
                 try:
                     from agent.context_references import preprocess_context_references_async
-                    from agent.model_metadata import get_model_context_length
+                    from agent.model_metadata import (
+                        get_model_context_length,
+                        resolve_config_context_length,
+                    )
+                    from hermes_cli.config import load_config
+
                     _msg_cwd = os.environ.get("MESSAGING_CWD", os.path.expanduser("~"))
+                    _gw_cfg_ctx = resolve_config_context_length(
+                        load_config(), self._model, self._base_url or "")
                     _msg_ctx_len = get_model_context_length(
-                        self._model, base_url=self._base_url or "")
+                        self._model,
+                        base_url=self._base_url or "",
+                        config_context_length=_gw_cfg_ctx,
+                    )
                     _ctx_result = await preprocess_context_references_async(
                         message_text, cwd=_msg_cwd,
                         context_length=_msg_ctx_len, allowed_root=_msg_cwd)

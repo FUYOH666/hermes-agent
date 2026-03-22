@@ -5377,9 +5377,18 @@ class HermesCLI:
         if isinstance(message, str) and "@" in message:
             try:
                 from agent.context_references import preprocess_context_references
-                from agent.model_metadata import get_model_context_length
+                from agent.model_metadata import (
+                    get_model_context_length,
+                    resolve_config_context_length,
+                )
+                _cfg_ctx = resolve_config_context_length(
+                    self.config, self.model, self.base_url or "")
                 _ctx_len = get_model_context_length(
-                    self.model, base_url=self.base_url or "", api_key=self.api_key or "")
+                    self.model,
+                    base_url=self.base_url or "",
+                    api_key=self.api_key or "",
+                    config_context_length=_cfg_ctx,
+                )
                 _ctx_result = preprocess_context_references(
                     message, cwd=os.getcwd(), context_length=_ctx_len)
                 if _ctx_result.expanded or _ctx_result.blocked:

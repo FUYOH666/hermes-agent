@@ -299,6 +299,62 @@ class TestGetModelContextLength:
 
 
 # =========================================================================
+# resolve_config_context_length
+# =========================================================================
+
+class TestResolveConfigContextLength:
+    def test_model_dict_context_length(self):
+        from agent.model_metadata import resolve_config_context_length
+
+        cfg = {"model": {"context_length": 262144}}
+        assert resolve_config_context_length(cfg, "any-model", "") == 262144
+
+    def test_custom_providers_match(self):
+        from agent.model_metadata import resolve_config_context_length
+
+        cfg = {
+            "custom_providers": [
+                {
+                    "base_url": "http://localhost:8005/v1",
+                    "models": {
+                        "my.gguf": {"context_length": 131072},
+                    },
+                }
+            ],
+        }
+        assert (
+            resolve_config_context_length(
+                cfg, "my.gguf", "http://localhost:8005/v1",
+            )
+            == 131072
+        )
+
+    def test_model_dict_wins_over_custom_providers(self):
+        from agent.model_metadata import resolve_config_context_length
+
+        cfg = {
+            "model": {
+                "context_length": 99999,
+                "base_url": "http://localhost:8005/v1",
+            },
+            "custom_providers": [
+                {
+                    "base_url": "http://localhost:8005/v1",
+                    "models": {"x": {"context_length": 111}},
+                }
+            ],
+        }
+        assert resolve_config_context_length(cfg, "x", "http://localhost:8005/v1") == 99999
+
+    def test_invalid_or_zero_returns_none(self):
+        from agent.model_metadata import resolve_config_context_length
+
+        assert resolve_config_context_length({"model": {"context_length": 0}}, "m", "") is None
+        assert resolve_config_context_length({"model": {"context_length": "nope"}}, "m", "") is None
+        assert resolve_config_context_length(None, "m", "http://x/v1") is None
+
+
+# =========================================================================
 # _strip_provider_prefix — Ollama model:tag vs provider:model
 # =========================================================================
 

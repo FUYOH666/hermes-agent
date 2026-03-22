@@ -25,6 +25,11 @@ model:
   # api_key: "your-key-here"  # Uncomment to set here instead of .env
   base_url: "https://openrouter.ai/api/v1"
 
+  # Optional: context window in tokens for custom/local models when auto-detection
+  # is wrong or unavailable (e.g. llama.cpp GGUF). Applies to CLI @-references,
+  # gateway messaging, and context compression.
+  # context_length: 262144
+
 # =============================================================================
 # OpenRouter Provider Routing (only applies when using OpenRouter)
 # =============================================================================

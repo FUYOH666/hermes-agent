@@ -105,8 +105,7 @@ DEFAULT_CONTEXT_LENGTHS = {
     "deepseek": 128000,
     # Meta
     "llama": 131072,
-    # Qwen — explicit local llama.cpp model id (custom endpoint)
-    "Qwen3.5-27B-Uncensored-HauhauCS-Aggressive-Q4_K_M.gguf": 262144,
+    # Qwen (use model.context_length in config.yaml for local GGUF ids)
     "qwen": 131072,
     # MiniMax
     "minimax": 204800,
@@ -753,6 +752,64 @@ def _resolve_nous_context_length(model: str) -> Optional[int]:
     return None
 
 
+def resolve_config_context_length(
+    merged_config: Optional[Dict[str, Any]],
+    model: str,
+    base_url: str,
+) -> Optional[int]:
+    """Read context_length from config (``model.context_length`` or ``custom_providers``).
+
+    Same rules as ``AIAgent`` compressor setup: prefer a positive int under
+    ``model`` when it is a dict; else match ``custom_providers[].base_url`` to
+    ``base_url`` and read ``models.<model_id>.context_length``.
+    """
+    if not merged_config or not isinstance(merged_config, dict):
+        return None
+
+    raw_model = merged_config.get("model")
+    if isinstance(raw_model, dict):
+        ctx = raw_model.get("context_length")
+        if ctx is not None:
+            try:
+                n = int(ctx)
+                if n > 0:
+                    return n
+            except (TypeError, ValueError):
+                pass
+
+    bu = (base_url or "").rstrip("/")
+    if not bu:
+        return None
+
+    cps = merged_config.get("custom_providers")
+    if not isinstance(cps, list):
+        return None
+
+    for entry in cps:
+        if not isinstance(entry, dict):
+            continue
+        ep_url = (entry.get("base_url") or "").rstrip("/")
+        if not ep_url or ep_url != bu:
+            continue
+        models_map = entry.get("models", {})
+        if not isinstance(models_map, dict):
+            return None
+        mc = models_map.get(model, {})
+        if not isinstance(mc, dict):
+            return None
+        cp_ctx = mc.get("context_length")
+        if cp_ctx is not None:
+            try:
+                n = int(cp_ctx)
+                if n > 0:
+                    return n
+            except (TypeError, ValueError):
+                pass
+        break
+
+    return None
+
+
 def get_model_context_length(
     model: str,
     base_url: str = "",
@@ -763,7 +820,8 @@ def get_model_context_length(
     """Get the context length for a model.
 
     Resolution order:
-    0. Explicit config override (model.context_length or custom_providers per-model)
+    0. Explicit config override (``config_context_length`` — use
+       :func:`resolve_config_context_length` with loaded YAML)
     1. Persistent cache (previously discovered via probing)
     2. Active endpoint metadata (/models for explicit custom endpoints)
     3. Local server query (for local endpoints)
