@@ -61,8 +61,14 @@ COMMAND_REGISTRY: list[CommandDef] = [
     CommandDef("rollback", "List or restore filesystem checkpoints", "Session",
                args_hint="[number]"),
     CommandDef("stop", "Kill all running background processes", "Session"),
+    CommandDef("approve", "Approve a pending dangerous command", "Session",
+               gateway_only=True, args_hint="[session|always]"),
+    CommandDef("deny", "Deny a pending dangerous command", "Session",
+               gateway_only=True),
     CommandDef("background", "Run a prompt in the background", "Session",
                aliases=("bg",), args_hint="<prompt>"),
+    CommandDef("queue", "Queue a prompt for the next turn (doesn't interrupt)", "Session",
+               aliases=("q",), args_hint="<prompt>"),
     CommandDef("status", "Show session info", "Session",
                gateway_only=True),
     CommandDef("sethome", "Set this chat as the home channel", "Session",
@@ -81,6 +87,8 @@ COMMAND_REGISTRY: list[CommandDef] = [
                cli_only=True, args_hint="[text]", subcommands=("clear",)),
     CommandDef("personality", "Set a predefined personality", "Configuration",
                args_hint="[name]"),
+    CommandDef("statusbar", "Toggle the context/model status bar", "Configuration",
+               cli_only=True, aliases=("sb",)),
     CommandDef("verbose", "Cycle tool progress display: off -> new -> all -> verbose",
                "Configuration", cli_only=True),
     CommandDef("reasoning", "Manage reasoning effort and display", "Configuration",
@@ -129,7 +137,7 @@ COMMAND_REGISTRY: list[CommandDef] = [
 
 
 # ---------------------------------------------------------------------------
-# Derived lookups -- rebuilt once at import time
+# Derived lookups -- rebuilt once at import time, refreshed by rebuild_lookups()
 # ---------------------------------------------------------------------------
 
 def _build_command_lookup() -> dict[str, CommandDef]:
@@ -151,6 +159,58 @@ def resolve_command(name: str) -> CommandDef | None:
     Accepts names with or without the leading slash.
     """
     return _COMMAND_LOOKUP.get(name.lower().lstrip("/"))
+
+
+def register_plugin_command(cmd: CommandDef) -> None:
+    """Append a plugin-defined command to the registry and refresh lookups."""
+    COMMAND_REGISTRY.append(cmd)
+    rebuild_lookups()
+
+
+def rebuild_lookups() -> None:
+    """Rebuild all derived lookup dicts from the current COMMAND_REGISTRY.
+
+    Called after plugin commands are registered so they appear in help,
+    autocomplete, gateway dispatch, Telegram menu, and Slack mapping.
+    """
+    global GATEWAY_KNOWN_COMMANDS
+
+    _COMMAND_LOOKUP.clear()
+    _COMMAND_LOOKUP.update(_build_command_lookup())
+
+    COMMANDS.clear()
+    for cmd in COMMAND_REGISTRY:
+        if not cmd.gateway_only:
+            COMMANDS[f"/{cmd.name}"] = _build_description(cmd)
+            for alias in cmd.aliases:
+                COMMANDS[f"/{alias}"] = f"{cmd.description} (alias for /{cmd.name})"
+
+    COMMANDS_BY_CATEGORY.clear()
+    for cmd in COMMAND_REGISTRY:
+        if not cmd.gateway_only:
+            cat = COMMANDS_BY_CATEGORY.setdefault(cmd.category, {})
+            cat[f"/{cmd.name}"] = COMMANDS[f"/{cmd.name}"]
+            for alias in cmd.aliases:
+                cat[f"/{alias}"] = COMMANDS[f"/{alias}"]
+
+    SUBCOMMANDS.clear()
+    for cmd in COMMAND_REGISTRY:
+        if cmd.subcommands:
+            SUBCOMMANDS[f"/{cmd.name}"] = list(cmd.subcommands)
+    for cmd in COMMAND_REGISTRY:
+        key = f"/{cmd.name}"
+        if key in SUBCOMMANDS or not cmd.args_hint:
+            continue
+        m = _PIPE_SUBS_RE.search(cmd.args_hint)
+        if m:
+            SUBCOMMANDS[key] = m.group(0).split("|")
+
+    GATEWAY_KNOWN_COMMANDS = frozenset(
+        name
+        for cmd in COMMAND_REGISTRY
+        if not cmd.cli_only
+        for name in (cmd.name, *cmd.aliases)
+    )
 
 
 def _build_description(cmd: CommandDef) -> str:

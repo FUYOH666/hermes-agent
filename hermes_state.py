@@ -181,7 +181,11 @@ class SessionDB:
                 ]
                 for name, column_type in new_columns:
                     try:
-                        cursor.execute(f"ALTER TABLE sessions ADD COLUMN {name} {column_type}")
+                        # name and column_type come from the hardcoded tuple above,
+                        # not user input. Double-quote identifier escaping is applied
+                        # as defense-in-depth; SQLite DDL cannot be parameterized.
+                        safe_name = name.replace('"', '""')
+                        cursor.execute(f'ALTER TABLE sessions ADD COLUMN "{safe_name}" {column_type}')
                     except sqlite3.OperationalError:
                         pass
                 cursor.execute("UPDATE schema_version SET version = 5")
@@ -757,16 +761,14 @@ class SessionDB:
         if not query:
             return []
 
-        if source_filter is None:
-            source_filter = ["cli", "telegram", "discord", "whatsapp", "slack"]
-
         # Build WHERE clauses dynamically
         where_clauses = ["messages_fts MATCH ?"]
         params: list = [query]
 
-        source_placeholders = ",".join("?" for _ in source_filter)
-        where_clauses.append(f"s.source IN ({source_placeholders})")
-        params.extend(source_filter)
+        if source_filter is not None:
+            source_placeholders = ",".join("?" for _ in source_filter)
+            where_clauses.append(f"s.source IN ({source_placeholders})")
+            params.extend(source_filter)
 
         if role_filter:
             role_placeholders = ",".join("?" for _ in role_filter)

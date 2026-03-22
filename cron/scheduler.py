@@ -136,6 +136,10 @@ def _deliver_result(job: dict, content: str) -> None:
         "slack": Platform.SLACK,
         "whatsapp": Platform.WHATSAPP,
         "signal": Platform.SIGNAL,
+        "matrix": Platform.MATRIX,
+        "mattermost": Platform.MATTERMOST,
+        "homeassistant": Platform.HOMEASSISTANT,
+        "dingtalk": Platform.DINGTALK,
         "email": Platform.EMAIL,
         "sms": Platform.SMS,
     }
@@ -155,15 +159,29 @@ def _deliver_result(job: dict, content: str) -> None:
         logger.warning("Job '%s': platform '%s' not configured/enabled", job["id"], platform_name)
         return
 
+    # Wrap the content so the user knows this is a cron delivery and that
+    # the interactive agent has no visibility into it.
+    task_name = job.get("name", job["id"])
+    wrapped = (
+        f"Cronjob Response: {task_name}\n"
+        f"-------------\n\n"
+        f"{content}\n\n"
+        f"Note: The agent cannot see this message, and therefore cannot respond to it."
+    )
+
     # Run the async send in a fresh event loop (safe from any thread)
+    coro = _send_to_platform(platform, pconfig, chat_id, wrapped, thread_id=thread_id)
     try:
-        result = asyncio.run(_send_to_platform(platform, pconfig, chat_id, content, thread_id=thread_id))
+        result = asyncio.run(coro)
     except RuntimeError:
-        # asyncio.run() fails if there's already a running loop in this thread;
-        # spin up a new thread to avoid that.
+        # asyncio.run() checks for a running loop before awaiting the coroutine;
+        # when it raises, the original coro was never started — close it to
+        # prevent "coroutine was never awaited" RuntimeWarning, then retry in a
+        # fresh thread that has no running loop.
+        coro.close()
         import concurrent.futures
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, _send_to_platform(platform, pconfig, chat_id, content, thread_id=thread_id))
+            future = pool.submit(asyncio.run, _send_to_platform(platform, pconfig, chat_id, wrapped, thread_id=thread_id))
             result = future.result(timeout=30)
     except Exception as e:
         logger.error("Job '%s': delivery to %s:%s failed: %s", job["id"], platform_name, chat_id, e)
@@ -173,12 +191,6 @@ def _deliver_result(job: dict, content: str) -> None:
         logger.error("Job '%s': delivery error: %s", job["id"], result["error"])
     else:
         logger.info("Job '%s': delivered to %s:%s", job["id"], platform_name, chat_id)
-        # Mirror the delivered content into the target's gateway session
-        try:
-            from gateway.mirror import mirror_to_session
-            mirror_to_session(platform_name, chat_id, content, source_label="cron", thread_id=thread_id)
-        except Exception as e:
-            logger.warning("Job '%s': mirror_to_session failed: %s", job["id"], e)
 
 
 def _build_job_prompt(job: dict) -> str:
@@ -207,11 +219,14 @@ def _build_job_prompt(job: dict) -> str:
     from tools.skills_tool import skill_view
 
     parts = []
+    skipped: list[str] = []
     for skill_name in skill_names:
         loaded = json.loads(skill_view(skill_name))
         if not loaded.get("success"):
             error = loaded.get("error") or f"Failed to load skill '{skill_name}'"
-            raise RuntimeError(error)
+            logger.warning("Cron job '%s': skill not found, skipping — %s", job.get("name", job.get("id")), error)
+            skipped.append(skill_name)
+            continue
 
         content = str(loaded.get("content") or "").strip()
         if parts:
@@ -223,6 +238,15 @@ def _build_job_prompt(job: dict) -> str:
                 content,
             ]
         )
+
+    if skipped:
+        notice = (
+            f"[SYSTEM: The following skill(s) were listed for this job but could not be found "
+            f"and were skipped: {', '.join(skipped)}. "
+            f"Start your response with a brief notice so the user is aware, e.g.: "
+            f"'⚠️ Skill(s) not found and skipped: {', '.join(skipped)}']"
+        )
+        parts.insert(0, notice)
 
     if prompt:
         parts.extend(["", f"The user has provided the following instruction alongside the skill invocation: {prompt}"])
@@ -359,6 +383,8 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
                 "base_url": runtime.get("base_url"),
                 "provider": runtime.get("provider"),
                 "api_mode": runtime.get("api_mode"),
+                "command": runtime.get("command"),
+                "args": list(runtime.get("args") or []),
             },
         )
 
@@ -368,6 +394,8 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             base_url=turn_route["runtime"].get("base_url"),
             provider=turn_route["runtime"].get("provider"),
             api_mode=turn_route["runtime"].get("api_mode"),
+            acp_command=turn_route["runtime"].get("command"),
+            acp_args=turn_route["runtime"].get("args"),
             max_iterations=max_iterations,
             reasoning_config=reasoning_config,
             prefill_messages=prefill_messages,
@@ -375,7 +403,7 @@ def run_job(job: dict) -> tuple[bool, str, str, Optional[str]]:
             providers_ignored=pr.get("ignore"),
             providers_order=pr.get("order"),
             provider_sort=pr.get("sort"),
-            disabled_toolsets=["cronjob"],
+            disabled_toolsets=["cronjob", "messaging", "clarify"],
             quiet_mode=True,
             platform="cron",
             session_id=f"cron_{job_id}_{_hermes_now().strftime('%Y%m%d_%H%M%S')}",
