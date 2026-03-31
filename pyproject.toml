@@ -104,6 +104,10 @@ py-modules = ["run_agent", "model_tools", "toolsets", "batch_runner", "trajector
 [tool.setuptools.packages.find]
 include = ["agent", "tools", "tools.*", "hermes_cli", "gateway", "gateway.*", "cron", "honcho_integration", "acp_adapter"]
 
+# Block compromised PyPI releases (supply chain, Mar 2026); see BerriAI/litellm#24518
+[tool.uv]
+constraint-dependencies = ["litellm>=1.75.5,<1.82.7"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
