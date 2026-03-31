@@ -59,3 +59,9 @@ GITHUB_POPULAR_REPOS_REPORT.md
 TOOL_CHECK_REPORT.md
 POLYMARKET_ANALYSIS.md
 TRENDSHIFT_IO_ANALYSIS.md
+
+mini-swe-agent/
+
+# Nix
+.direnv/
+result
